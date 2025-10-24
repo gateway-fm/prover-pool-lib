@@ -35,6 +35,8 @@ type IServicesPool interface {
 	NextLeastLoaded(tag string) service.IService
 
 	NextLeastLoadedProver(tag string, upload bool) service.IService
+
+	NextIdleProver(tag string) service.IService
 	// FromHealthyToJail move Unhealthy service
 	// from Healthy slice to Jail map
 	FromHealthyToJail(id string)
@@ -107,6 +109,10 @@ func (p *ServicesPool) NextLeastLoaded(tag string) service.IService {
 func (p *ServicesPool) NextLeastLoadedProver(tag string, upload bool) service.IService {
 	// TODO maybe is better to return error if next service is nil
 	return p.list.NextLeastLoadedProver(tag, upload)
+}
+
+func (p *ServicesPool) NextIdleProver(tag string) service.IService {
+	return p.list.NextIdleProver(tag)
 }
 
 func (p *ServicesPool) ServiceById(id string) service.IService {
