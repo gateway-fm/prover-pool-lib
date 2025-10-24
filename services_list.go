@@ -29,6 +29,8 @@ type IServicesList interface {
 
 	NextLeastLoadedProver(tag string, upload bool) service.IService
 
+	NextIdleProver(tag string) service.IService
+
 	// AnyByTag returns any service with given tag from healthy list
 	AnyByTag(tag string) service.IService
 
@@ -227,9 +229,47 @@ func (l *ServicesList) SetProverLoadById(id string, load *service.ProverLoad) {
 	srv.SetProverLoad(load)
 }
 
-func (l *ServicesList) NextLeastLoadedProver(tag string, upload bool) service.IService {
-	defer l.mu.Unlock()
+func (l *ServicesList) NextIdleProver(tag string) service.IService {
 	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if len(l.healthy) == 0 {
+		return nil
+	}
+
+	var leastLoadedSrv service.IService
+
+	for _, srv := range l.healthy {
+		_, isTagPresent := srv.Tags()[tag]
+		if !isTagPresent {
+			continue
+		}
+
+		load := srv.ProverLoad()
+		if load == nil {
+			continue
+		}
+
+		if load.ProverStatus != service.GetStatusResponse_STATUS_IDLE {
+			logger.Log().Info(fmt.Sprintf("Service %v skipped: invalid status %v", srv.ID(), load.ProverStatus))
+			continue
+		}
+
+		leastLoadedSrv = srv
+	}
+
+	if leastLoadedSrv != nil {
+		pl := leastLoadedSrv.ProverLoad()
+		pl.ProverStatus = service.GetStatusResponse_STATUS_COMPUTING
+		leastLoadedSrv.SetProverLoad(pl)
+	}
+
+	return leastLoadedSrv
+}
+
+func (l *ServicesList) NextLeastLoadedProver(tag string, upload bool) service.IService {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
 	if len(l.healthy) == 0 {
 		//logger.Log().Error(fmt.Sprintf("list name %s no healthy services are present during list's Next() call", l.serviceName))
@@ -358,139 +398,6 @@ func (l *ServicesList) NextLeastLoadedProver(tag string, upload bool) service.IS
 	return leastLoadedSrv
 }
 
-/*
-func (l *ServicesList) RandomIdleComputingProver(tag string) service.IService {
-	//defer l.mu.Unlock()
-	//l.mu.Lock()
-
-	if len(l.healthy) == 0 {
-		logger.Log().Info(fmt.Sprintf("list name %s no healthy services are present during list's RandomIdleComputingProver() call", l.serviceName))
-		return nil
-	}
-
-	// Collect all eligible services
-	var eligibleServices []service.IService
-	for _, srv := range l.healthy {
-		_, isTagPresent := srv.Tags()[tag]
-		if !isTagPresent {
-			continue
-		}
-
-		load := srv.ProverLoad()
-		if load == nil {
-			continue
-		}
-
-		if load.ProverStatus != service.GetStatusResponse_STATUS_COMPUTING &&
-			load.ProverStatus != service.GetStatusResponse_STATUS_IDLE {
-			continue
-		}
-
-		eligibleServices = append(eligibleServices, srv)
-	}
-
-	if len(eligibleServices) == 0 {
-		logger.Log().Info(fmt.Sprintf("No eligible services found for tag %s", tag))
-		return nil
-	}
-
-	// Select random service from eligible pool using crypto/rand
-	b := make([]byte, 8)
-	_, err := rand.Read(b)
-	if err != nil {
-		logger.Log().Error(fmt.Sprintf("Failed to generate random number: %v", err))
-		return nil
-	}
-	selectedIndex := int(binary.BigEndian.Uint64(b) % uint64(len(eligibleServices)))
-	selectedService := eligibleServices[selectedIndex]
-
-	logger.Log().Info(fmt.Sprintf("Randomly selected service %v from %d eligible services",
-		selectedService.ID(), len(eligibleServices)))
-
-	return selectedService
-}
-*/
-/*
-RETURN TO THIS LATER AFTER DEBUG DONE
-
-	func (l *ServicesList) NextLeastLoadedProver(tag string) service.IService {
-		defer l.mu.Unlock()
-		l.mu.Lock()
-
-		if len(l.healthy) == 0 {
-			logger.Log().Info(fmt.Sprintf("list name %s no healthy services are present during list's Next() call", l.serviceName))
-			return nil
-		}
-
-		var leastLoadedSrv service.IService
-		var minLoad *service.ProverLoad
-
-		for _, srv := range l.healthy {
-			_, isTagPresent := srv.Tags()[tag]
-			if !isTagPresent {
-				continue
-			}
-
-			load := srv.ProverLoad()
-			if load == nil {
-				continue
-			}
-
-			if load.ProverStatus != service.GetStatusResponse_STATUS_COMPUTING &&
-				load.ProverStatus != service.GetStatusResponse_STATUS_IDLE {
-				continue
-			}
-
-			if minLoad == nil {
-				minLoad = load
-				leastLoadedSrv = srv
-				continue
-			}
-
-			// Prioritize IDLE over COMPUTING
-			switch {
-			case load.ProverStatus == service.GetStatusResponse_STATUS_IDLE &&
-				minLoad.ProverStatus == service.GetStatusResponse_STATUS_COMPUTING:
-				minLoad = load
-				leastLoadedSrv = srv
-				continue
-			case load.ProverStatus == service.GetStatusResponse_STATUS_COMPUTING &&
-				minLoad.ProverStatus == service.GetStatusResponse_STATUS_IDLE:
-				continue
-			}
-
-			// Compare other metrics if status is the same
-			switch {
-			case minLoad.TasksQueue < load.TasksQueue:
-				continue
-			case minLoad.TasksQueue > load.TasksQueue:
-				minLoad = load
-				leastLoadedSrv = srv
-				continue
-			}
-
-			switch {
-			case minLoad.NumberCores > load.NumberCores:
-				continue
-			case minLoad.NumberCores < load.NumberCores:
-				minLoad = load
-				leastLoadedSrv = srv
-				continue
-			}
-
-			switch {
-			case minLoad.CurrentComputingStartTime <= load.CurrentComputingStartTime:
-				continue
-			case minLoad.CurrentComputingStartTime > load.CurrentComputingStartTime:
-				minLoad = load
-				leastLoadedSrv = srv
-				continue
-			}
-		}
-
-		return leastLoadedSrv
-	}
-*/
 func (l *ServicesList) NextLeastLoaded(tag string) service.IService {
 	defer l.mu.Unlock()
 	l.mu.Lock()
