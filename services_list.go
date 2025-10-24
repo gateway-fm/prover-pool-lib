@@ -251,7 +251,6 @@ func (l *ServicesList) NextIdleProver(tag string) service.IService {
 		}
 
 		if load.ProverStatus != service.GetStatusResponse_STATUS_IDLE {
-			logger.Log().Info(fmt.Sprintf("Service %v skipped: invalid status %v", srv.ID(), load.ProverStatus))
 			continue
 		}
 
